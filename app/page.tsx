@@ -1277,6 +1277,7 @@ export default function Page() {
           <Button
             variant="ghost"
             size="icon"
+            aria-label="Toggle dark mode"
             onClick={() => setTheme(darkMode ? "light" : "dark")}
             className="rounded-lg"
             style={{
@@ -1623,6 +1624,7 @@ export default function Page() {
             <Button
               variant="ghost"
               size="icon"
+              aria-label="Toggle dark mode"
               onClick={() => setTheme(darkMode ? "light" : "dark")}
               className="rounded-lg"
               style={{
