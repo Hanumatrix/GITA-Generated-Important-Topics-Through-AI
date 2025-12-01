@@ -1,6 +1,7 @@
 import { generateObject } from "ai";
 import { google } from "@ai-sdk/google";
 import { z } from "zod";
+import { getNextAPIKey, markAPIKeyExhausted } from "@/lib/api-key-rotator";
 
 const codingProblemSchema = z.object({
   problem_title: z
@@ -85,12 +86,61 @@ Requirements:
 
 Generate coding problems that help students master this specific topic.`;
 
-    const result = await generateObject({
-      model: google("gemini-2.0-flash"),
-      schema: codingProblemsSchema,
-      prompt,
-      temperature: 0.7,
-    });
+    let result: any = null;
+    let lastError: any = null;
+    let attempts = 0;
+    const maxAttempts = 3;
+    const usedKeys: string[] = [];
+
+    while (attempts < maxAttempts) {
+      try {
+        const apiKey = getNextAPIKey();
+        usedKeys.push(apiKey);
+        result = await generateObject({
+          model: google("gemini-2.0-flash"),
+          schema: codingProblemsSchema,
+          prompt,
+          temperature: 0.7,
+        });
+        break;
+      } catch (error: any) {
+        lastError = error;
+        attempts++;
+
+        // Only mark key as exhausted on FINAL attempt failure
+        if (attempts === maxAttempts) {
+          const lastKey = usedKeys[usedKeys.length - 1];
+          if (
+            error?.status === 429 ||
+            error?.message?.includes("429") ||
+            error?.message?.includes("quota") ||
+            error?.message?.includes("rate")
+          ) {
+            markAPIKeyExhausted(lastKey);
+            console.warn(
+              `[Rate Limit] API key exhausted after ${maxAttempts} attempts`
+            );
+          }
+        }
+
+        if (attempts < maxAttempts) {
+          console.warn(
+            `[Retry] Attempt ${attempts}/${maxAttempts} failed, trying next key...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    if (!result) {
+      throw (
+        lastError ||
+        new Error("Failed to generate coding problems after multiple attempts")
+      );
+    }
 
     return Response.json(result.object);
   } catch (error) {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import { getNextAPIKey, markAPIKeyExhausted } from "@/lib/api-key-rotator";
 
 const questionAnswerSchema = z.object({
   question: z.string().describe("Important exam-style question"),
@@ -91,10 +92,20 @@ export async function POST(req: Request) {
     }
 
     // Prompt to generate Q&As ONLY (coding problems are generated separately for speed)
-    const result = await generateObject({
-      model: google("gemini-2.0-flash"),
-      schema: answersSchema,
-      prompt: `You are an expert syllabus-driven educator. Based on the syllabus content and topic provided, generate 3-6 important exam-style questions with detailed answers.
+    let result: any = null;
+    let lastError: any = null;
+    let attempts = 0;
+    const maxAttempts = 3;
+    const usedKeys: string[] = [];
+
+    while (attempts < maxAttempts) {
+      try {
+        const apiKey = getNextAPIKey();
+        usedKeys.push(apiKey);
+        result = await generateObject({
+          model: google("gemini-2.0-flash"),
+          schema: answersSchema,
+          prompt: `You are an expert syllabus-driven educator. Based on the syllabus content and topic provided, generate 3-6 important exam-style questions with detailed answers.
 
 Syllabus Content:
 ${content}
@@ -113,8 +124,47 @@ Requirements:
 - Do not invent or add material outside the content
 
 Return ONLY the JSON object with questions_answers array.`,
-      temperature: 0.7,
-    });
+          temperature: 0.7,
+        });
+        break;
+      } catch (error: any) {
+        lastError = error;
+        attempts++;
+
+        // Only mark key as exhausted on FINAL attempt failure
+        if (attempts === maxAttempts) {
+          const lastKey = usedKeys[usedKeys.length - 1];
+          if (
+            error?.status === 429 ||
+            error?.message?.includes("429") ||
+            error?.message?.includes("quota") ||
+            error?.message?.includes("rate")
+          ) {
+            markAPIKeyExhausted(lastKey);
+            console.warn(
+              `[Rate Limit] API key exhausted after ${maxAttempts} attempts`
+            );
+          }
+        }
+
+        if (attempts < maxAttempts) {
+          console.warn(
+            `[Retry] Attempt ${attempts}/${maxAttempts} failed, trying next key...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    if (!result) {
+      throw (
+        lastError ||
+        new Error("Failed to generate answers after multiple attempts")
+      );
+    }
 
     const questions_answers = Array.isArray(result.object?.questions_answers)
       ? result.object.questions_answers

@@ -1,6 +1,7 @@
 import { generateObject } from "ai";
 import { google } from "@ai-sdk/google";
 import { z } from "zod";
+import { getNextAPIKey, markAPIKeyExhausted } from "@/lib/api-key-rotator";
 
 const topicSchema = z.object({
   title: z.string().describe("Topic title"),
@@ -57,18 +58,66 @@ export async function POST(req: Request) {
     // response and continue.
     let object: any = null;
     try {
-      const result = await generateObject({
-        model: google("gemini-2.0-flash"),
-        schema: topicsSchema,
-        messages: [
-          {
-            role: "user",
-            content: `You are an expert educational analyst. Analyze the syllabus content and extract 20-25 important topics as JSON objects (do NOT include questions/answers at this stage).\n\nSyllabus Title: ${title}\n\nSyllabus Content:\n${content}\n\nFor each topic return:\n- title (string)\n- description (2-3 sentences)\n- importance_score (0-1)\n- marks_value (0-50)\n- has_diagrams (boolean)\n- key_points (array of 3-8 concise learning points)\n\nReturn only valid JSON matching this shape. Generate roughly 20-25 topics when possible.`,
-          },
-        ],
-      });
+      let result: any = null;
+      let lastError: any = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+      const usedKeys: string[] = [];
 
-      // `generateObject` returns { object } when schema validation passes.
+      while (attempts < maxAttempts) {
+        try {
+          const apiKey = getNextAPIKey();
+          usedKeys.push(apiKey);
+          result = await generateObject({
+            model: google("gemini-2.0-flash"),
+            schema: topicsSchema,
+            messages: [
+              {
+                role: "user",
+                content: `You are an expert educational analyst. Analyze the syllabus content and extract 20-25 important topics as JSON objects (do NOT include questions/answers at this stage).\n\nSyllabus Title: ${title}\n\nSyllabus Content:\n${content}\n\nFor each topic return:\n- title (string)\n- description (2-3 sentences)\n- importance_score (0-1)\n- marks_value (0-50)\n- has_diagrams (boolean)\n- key_points (array of 3-8 concise learning points)\n\nReturn only valid JSON matching this shape. Generate roughly 20-25 topics when possible.`,
+              },
+            ],
+          });
+          break;
+        } catch (error: any) {
+          lastError = error;
+          attempts++;
+
+          // Only mark key as exhausted on FINAL attempt failure
+          if (attempts === maxAttempts) {
+            const lastKey = usedKeys[usedKeys.length - 1];
+            if (
+              error?.status === 429 ||
+              error?.message?.includes("429") ||
+              error?.message?.includes("quota") ||
+              error?.message?.includes("rate")
+            ) {
+              markAPIKeyExhausted(lastKey);
+              console.warn(
+                `[Rate Limit] API key exhausted after ${maxAttempts} attempts`
+              );
+            }
+          }
+
+          if (attempts < maxAttempts) {
+            console.warn(
+              `[Retry] Attempt ${attempts}/${maxAttempts} failed, trying next key...`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            continue;
+          }
+
+          throw error;
+        }
+      }
+
+      if (!result) {
+        throw (
+          lastError ||
+          new Error("Failed to generate topics after multiple attempts")
+        );
+      }
+
       object = (result as any).object;
     } catch (aiError: any) {
       console.warn(

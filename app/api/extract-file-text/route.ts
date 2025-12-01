@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Server-side file extraction for PDF, DOCX, and TXT files
-// This ensures the actual syllabus content reaches the AI, not placeholders
-
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -19,26 +16,74 @@ export async function POST(req: NextRequest) {
       text = await file.text();
     } else if (filename.endsWith(".pdf")) {
       try {
-        // Dynamic import of pdfjs-dist
-        const pdfjs = await import("pdfjs-dist");
+        const PDFParser = (await import("pdf2json")).default;
         const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
-        const pdf = await loadingTask.promise;
+        const buffer = Buffer.from(arrayBuffer);
 
-        let fullText = "";
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const strings = content.items.map((it: any) => it.str || "");
-          fullText += strings.join(" ") + "\n\n";
-        }
-        text = fullText.trim();
+        const pdfParser = new (PDFParser as any)(null, 1);
+
+        const parsePDF = new Promise<string>((resolve, reject) => {
+          pdfParser.on("pdfParser_dataError", (errData: any) => {
+            console.error("PDF Parser Error:", errData);
+            reject(new Error(errData.parserError || "PDF parsing failed"));
+          });
+
+          pdfParser.on("pdfParser_dataReady", (pdfData: any) => {
+            try {
+              const pages = pdfData.Pages || [];
+
+              if (pages.length === 0) {
+                reject(new Error("No pages found in PDF"));
+                return;
+              }
+
+              let extractedText = "";
+
+              // Better text extraction from pdf2json
+              for (const page of pages) {
+                if (!page.Texts) continue;
+
+                for (const textItem of page.Texts) {
+                  if (!textItem.R) continue;
+
+                  for (const run of textItem.R) {
+                    if (run.T) {
+                      try {
+                        // Decode URI component and replace encoded spaces
+                        const decodedText = decodeURIComponent(run.T);
+                        extractedText += decodedText + " ";
+                      } catch (e) {
+                        // If decode fails, use raw text
+                        extractedText += run.T + " ";
+                      }
+                    }
+                  }
+                }
+                extractedText += "\n\n"; // Add page break
+              }
+
+              console.log(`Raw extracted text length: ${extractedText.length}`);
+              console.log(
+                `First 200 chars: ${extractedText.substring(0, 200)}`
+              );
+
+              resolve(extractedText.trim());
+            } catch (err: any) {
+              console.error("Text extraction error:", err);
+              reject(err);
+            }
+          });
+
+          pdfParser.parseBuffer(buffer);
+        });
+
+        text = await parsePDF;
 
         if (!text || text.length < 50) {
+          console.log(`PDF text too short: ${text.length} characters`);
           return NextResponse.json(
             {
-              error:
-                "PDF appears to be scanned or empty. Please upload a text-based PDF or convert to TXT.",
+              error: `PDF appears to be scanned, image-based, or empty (extracted only ${text.length} characters). Please try uploading the PDF as a .txt file instead, or use a different PDF.`,
             },
             { status: 400 }
           );
@@ -47,25 +92,19 @@ export async function POST(req: NextRequest) {
         console.error("PDF extraction error:", err);
         return NextResponse.json(
           {
-            error:
-              "Failed to extract PDF. Install 'pdfjs-dist' or upload a TXT file instead.",
+            error: `Failed to extract PDF: ${err.message || "Unknown error"}`,
           },
           { status: 400 }
         );
       }
     } else if (filename.endsWith(".docx") || filename.endsWith(".doc")) {
       try {
-        // Dynamic import of mammoth
         const mammoth = await import("mammoth");
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
-        // Mammoth expects a buffer option
-        const result = await mammoth.extractRawText({
-          buffer: buffer,
-        });
-
-        text = result && result.value ? result.value.trim() : "";
+        const result = await mammoth.extractRawText({ buffer });
+        text = (result?.value || "").trim();
 
         if (!text || text.length < 50) {
           return NextResponse.json(
@@ -80,8 +119,7 @@ export async function POST(req: NextRequest) {
         console.error("DOCX extraction error:", err);
         return NextResponse.json(
           {
-            error:
-              "Failed to extract DOCX. Install 'mammoth' or upload a TXT file instead.",
+            error: `Failed to extract DOCX: ${err.message}`,
           },
           { status: 400 }
         );
@@ -95,10 +133,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    console.log(
+      `✅ Successfully extracted ${text.length} characters from ${file.name}`
+    );
+
     return NextResponse.json({
       success: true,
       text,
-      filename,
+      filename: file.name,
       size: text.length,
     });
   } catch (error) {
