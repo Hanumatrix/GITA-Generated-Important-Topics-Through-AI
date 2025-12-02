@@ -23,7 +23,7 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https:; img-src 'self' data:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data:;",
+              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https: wss: https://sensible-terrier-111.convex.cloud wss://sensible-terrier-111.convex.cloud; img-src 'self' data:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data:",
           },
         ],
       },
