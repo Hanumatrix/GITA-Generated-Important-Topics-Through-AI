@@ -1,8 +1,13 @@
 import type React from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-// Re-enable Vercel Analytics (previously removed). Keep SSR disabled for analytics.
-import { Analytics } from "@vercel/analytics/react";
+import dynamic from "next/dynamic";
+// Load Analytics only when explicitly enabled via NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS
+// This avoids the dev-mode debug logs and remote script loading during local development.
+const Analytics = dynamic(
+  () => import("@vercel/analytics/react").then((m) => m.Analytics),
+  { ssr: false }
+);
 import { ThemeProvider } from "next-themes";
 import { ConvexClientProvider } from "./convex-provider";
 import "./globals.css";
@@ -33,8 +38,10 @@ export default function RootLayout({
       <body className="m-0 p-0 font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <ConvexClientProvider>{children}</ConvexClientProvider>
-          {/* Vercel Analytics: collects pageviews and SPA navigations */}
-          <Analytics />
+          {/* Vercel Analytics: load only when NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS=1 */}
+          {process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS === "1" ? (
+            <Analytics />
+          ) : null}
         </ThemeProvider>
       </body>
     </html>
