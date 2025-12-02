@@ -4,7 +4,8 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sun, Moon, Github, Twitter } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
+import { FaGithub, FaTwitter } from "react-icons/fa";
 import type { Topic, Relationship } from "@/types";
 import { extractTextFromFile } from "@/lib/extract-text-from-file";
 import { useMutation } from "convex/react";
@@ -1571,7 +1572,7 @@ export default function Page() {
                   : { backgroundColor: "#e5e7eb", color: "#4b5563" }
               }
             >
-              <Github size={18} />
+              <FaGithub size={18} />
             </a>
             <a
               href="https://x.com/hanumatrix"
@@ -1585,7 +1586,7 @@ export default function Page() {
                   : { backgroundColor: "#e5e7eb", color: "#4b5563" }
               }
             >
-              <Twitter size={18} />
+              <FaTwitter size={18} />
             </a>
             <span
               className="text-sm"
