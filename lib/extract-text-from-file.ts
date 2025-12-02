@@ -16,12 +16,14 @@ export async function extractTextFromFile(file: File): Promise<string> {
     filename.endsWith(".doc")
   ) {
     try {
+      // Try FormData first (standard approach)
       const formData = new FormData();
       formData.append("file", file);
 
       const response = await fetch("/api/extract-file-text", {
         method: "POST",
         body: formData,
+        // Don't set Content-Type header manually - let the browser set it
       });
 
       if (!response.ok) {

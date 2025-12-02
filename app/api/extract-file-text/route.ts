@@ -128,28 +128,7 @@ export async function POST(req: NextRequest) {
     const isExplicitMultipart =
       contentType.startsWith("multipart/form-data") ||
       contentType.startsWith("application/x-www-form-urlencoded");
-
-    if (!isExplicitMultipart && contentType !== "") {
-      // Log headers so you can inspect them in Vercel function logs
-      try {
-        const headersSnapshot = Array.from(req.headers.entries());
-        console.error(
-          "Invalid Content-Type for file upload:",
-          contentType,
-          headersSnapshot
-        );
-      } catch (e) {
-        console.error("Invalid Content-Type and failed to snapshot headers", e);
-      }
-
-      return NextResponse.json(
-        {
-          error:
-            "Invalid Content-Type. This endpoint expects a multipart/form-data upload (FormData). Do NOT set the Content-Type header manually when using FormData from the browser.",
-        },
-        { status: 400 }
-      );
-    }
+    const isJSON = contentType.startsWith("application/json");
 
     // Attempt to parse the form data. If the Content-Type header was empty
     // we still try, but handle parse failures gracefully and return a useful
@@ -162,17 +141,94 @@ export async function POST(req: NextRequest) {
       file = formData.get("file") as File;
     } catch (err: any) {
       console.error(
-        "Failed to parse formData(), attempting raw-body fallback:",
-        err
+        "Failed to parse formData(), attempting fallback:",
+        err.message || err
       );
-      try {
-        const headersSnapshot = Array.from(req.headers.entries());
-        console.error("Headers when formData() failed:", headersSnapshot);
-      } catch (e) {
-        console.error("Failed to snapshot headers after formData() failure", e);
+
+      // Fallback 1: Try parsing as JSON (if Content-Type is application/json)
+      if (isJSON) {
+        console.log(
+          "Content-Type is application/json, attempting JSON fallback..."
+        );
+        try {
+          const json = await req.json();
+          console.log("JSON parsed, looking for file data...");
+
+          // The FormData might have been serialized as JSON
+          // Try to extract file data (could be base64, blob, or FormData-like structure)
+          let buffer: Buffer | null = null;
+          let filename = "uploaded_file";
+
+          if (json && typeof json === "object") {
+            // Check if it has a base64-encoded field
+            if (json.fileData && typeof json.fileData === "string") {
+              console.log("Found base64-encoded fileData");
+              buffer = Buffer.from(json.fileData, "base64");
+              filename = json.filename || filename;
+            }
+            // Check if it's a FormData-like structure with a "file" field as base64
+            else if (json.file && typeof json.file === "string") {
+              console.log("Found base64-encoded file field");
+              buffer = Buffer.from(json.file, "base64");
+              filename = json.filename || filename;
+            }
+            // Check if it's the raw FormData entries
+            else if (Array.isArray(json)) {
+              // FormData as array of [name, value] pairs
+              for (const [key, val] of json) {
+                if (key === "file" && typeof val === "string") {
+                  console.log("Found file in FormData array as base64");
+                  buffer = Buffer.from(val, "base64");
+                  filename = filename;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (buffer && buffer.length > 0) {
+            const detectedType = detectFileTypeByMagicBytes(buffer);
+            console.log(`Detected file type from magic bytes: ${detectedType}`);
+
+            let text = "";
+
+            if (detectedType === "pdf") {
+              text = await extractTextFromPDF(buffer);
+            } else if (detectedType === "docx") {
+              text = await extractTextFromDOCX(buffer);
+            } else {
+              text = buffer.toString("utf-8").trim();
+            }
+
+            if (!text || text.length < 50) {
+              return NextResponse.json(
+                {
+                  error: `Extracted text is too short (${text.length} characters). File may be empty, image-based, or unreadable.`,
+                },
+                { status: 400 }
+              );
+            }
+
+            console.log(
+              `✅ Successfully extracted ${text.length} characters from JSON payload (fallback)`
+            );
+
+            return NextResponse.json({
+              success: true,
+              text,
+              filename,
+              size: text.length,
+            });
+          }
+        } catch (jsonErr: any) {
+          console.error(
+            "JSON fallback parsing failed:",
+            jsonErr.message || jsonErr
+          );
+        }
       }
 
-      // Fallback: try to read raw request body and detect file type by magic bytes
+      // Fallback 2: Try reading raw binary body
       console.log("Attempting raw-body fallback for file extraction...");
       try {
         const arrayBuffer = await req.arrayBuffer();
@@ -239,11 +295,14 @@ export async function POST(req: NextRequest) {
           size: text.length,
         });
       } catch (fallbackErr: any) {
-        console.error("Raw-body fallback also failed:", fallbackErr);
+        console.error(
+          "Raw-body fallback also failed:",
+          fallbackErr.message || fallbackErr
+        );
         return NextResponse.json(
           {
             error:
-              "Could not parse multipart form data or read raw request body. Ensure the client sends a browser `FormData` body and does NOT set `Content-Type` manually.",
+              "Could not parse multipart form data, JSON, or raw request body. Ensure the client sends a browser `FormData` body and does NOT set `Content-Type` manually.",
           },
           { status: 400 }
         );
