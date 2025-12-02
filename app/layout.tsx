@@ -17,21 +17,9 @@ export const metadata: Metadata = {
   generator: "v0.app",
   keywords: ["syllabus", "AI", "learning", "visualization", "exam prep"],
   icons: {
-    icon: [
-      {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "icon.jpeg",
-        type: "image/svg+xml",
-      },
-    ],
-    apple: "/apple-icon.png",
+    // Use the available `icon.jpeg` from the `public/` folder for all fallbacks
+    icon: [{ url: "/icon.jpeg" }],
+    apple: "/icon.jpeg",
   },
 };
 
