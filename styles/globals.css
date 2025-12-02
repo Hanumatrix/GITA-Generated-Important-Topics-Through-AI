@@ -129,3 +129,90 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Compatibility and accessibility fallbacks to reduce DevTools issues */
+@layer utilities {
+  /* Ensure consistent text-size behavior across browsers */
+  html,
+  :root,
+  :host {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Backdrop-filter fallback: add webkit prefix where dialogs/backdrops are used */
+  [data-nextjs-dialog-backdrop],
+  .dialog-backdrop {
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+
+  /* Mask-image prefix fallback for Edge/WebKit */
+  [data-nextjs-container-errors-pseudo-html-collapse="true"]
+    .nextjs__container_errors__component-stack
+    code,
+  .nextjs__container_errors__component-stack code {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0%,
+      black 10%
+    );
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, black 10%);
+  }
+
+  /* user-select prefix fallback */
+  .dev-tools-indicator-item,
+  .no-select,
+  .select-none {
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  /* Provide a safe fallback for `text-wrap: balance` utility (Safari older versions) */
+  .text-balance {
+    text-wrap: balance;
+    /* Fallbacks: prefer nicer wrapping rather than breaking words */
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Replace expensive height animations used by some accordion keyframes with transform/opacity-based animations.
+     This avoids triggering layout/paint costs when expanding/collapsing. These classes override the default
+     animate-accordion-up / animate-accordion-down provided by component CSS. */
+  .animate-accordion-down {
+    animation: accordion-down-safe 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: transform, opacity;
+  }
+
+  .animate-accordion-up {
+    animation: accordion-up-safe 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: transform, opacity;
+  }
+
+  @keyframes accordion-down-safe {
+    from {
+      opacity: 0;
+      transform-origin: top;
+      transform: translateY(-6px) scaleY(0.98);
+    }
+    to {
+      opacity: 1;
+      transform-origin: top;
+      transform: translateY(0) scaleY(1);
+    }
+  }
+
+  @keyframes accordion-up-safe {
+    from {
+      opacity: 1;
+      transform-origin: top;
+      transform: translateY(0) scaleY(1);
+    }
+    to {
+      opacity: 0;
+      transform-origin: top;
+      transform: translateY(-6px) scaleY(0.98);
+    }
+  }
+}

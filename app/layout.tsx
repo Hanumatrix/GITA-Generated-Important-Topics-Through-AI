@@ -1,7 +1,7 @@
 import type React from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next";
+// Removed Vercel Analytics import to avoid loading remote Vercel scripts in development
 import { ThemeProvider } from "next-themes";
 import { ConvexClientProvider } from "./convex-provider";
 import "./globals.css";
@@ -45,7 +45,6 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <ConvexClientProvider>{children}</ConvexClientProvider>
         </ThemeProvider>
-        <Analytics />
       </body>
     </html>
   );

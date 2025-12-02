@@ -29,6 +29,11 @@ class APIKeyRotator {
       process.env.GOOGLE_GENERATIVE_AI_API_KEY_4,
       process.env.GOOGLE_GENERATIVE_AI_API_KEY_5,
       process.env.GOOGLE_GENERATIVE_AI_API_KEY_6,
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY_7,
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY_8,
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY_9,
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY_10,
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY_11,
     ].filter(Boolean) as string[];
 
     const allKeys = baseKey ? [baseKey, ...additionalKeys] : additionalKeys;

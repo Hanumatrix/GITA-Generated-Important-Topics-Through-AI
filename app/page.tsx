@@ -4,9 +4,15 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, ChevronDown } from "lucide-react";
 import { FaGithub, FaTwitter } from "react-icons/fa";
 import type { Topic, Relationship } from "@/types";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { extractTextFromFile } from "@/lib/extract-text-from-file";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -47,6 +53,14 @@ export default function Page() {
   const [loadingProblemsForTopic, setLoadingProblemsForTopic] = useState<
     number | null
   >(null);
+  const [codingLanguage, setCodingLanguage] = useState<string>("C");
+  // Per-problem language selection: key = `${topicId}::cp::${cpIdx}`
+  const [perProblemLanguage, setPerProblemLanguage] = useState<{
+    [key: string]: string;
+  }>({});
+  const [perProblemLoading, setPerProblemLoading] = useState<{
+    [key: string]: boolean;
+  }>({});
   const [topicImages, setTopicImages] = useState<{ [topicId: string]: string }>(
     {}
   );
@@ -116,6 +130,114 @@ export default function Page() {
       return t.trim();
     } catch (e) {
       return text;
+    }
+  };
+
+  const getCpKey = (topicId: string, cpIdx: number) =>
+    `${topicId}::cp::${cpIdx}`;
+
+  // Regenerate code & explanation for a single coding problem in a chosen language
+  const regenerateCodingProblem = async (
+    topic: Topic,
+    cpIdx: number,
+    language: string
+  ) => {
+    if (!topic || !topic.coding_problems) return;
+    const key = getCpKey(topic.id, cpIdx);
+    setPerProblemLoading((p) => ({ ...p, [key]: true }));
+    try {
+      const cp = topic.coding_problems[cpIdx] || {};
+
+      const body = {
+        single_problem: {
+          problem_title: cp.problem_title || "",
+          problem_statement: cp.problem_statement || "",
+          algorithm_type: cp.algorithm_type || undefined,
+        },
+        language,
+      };
+
+      const res = await fetch("/api/generate-coding-problems", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to regenerate coding problem");
+      }
+
+      const data = await res.json();
+      const newCpRaw = data.coding_problems?.[0];
+      if (!newCpRaw) throw new Error("No problem returned from server");
+
+      const sanitizedCp = {
+        problem_title: sanitizeAIText(newCpRaw.problem_title || ""),
+        problem_statement: sanitizeAIText(newCpRaw.problem_statement || ""),
+        code_solution: newCpRaw.code_solution || "",
+        explanation: newCpRaw.explanation || "",
+        algorithm_type: newCpRaw.algorithm_type || "Unknown",
+        difficulty: newCpRaw.difficulty || "Medium",
+        time_complexity: newCpRaw.time_complexity || "N/A",
+        space_complexity: newCpRaw.space_complexity || "N/A",
+        needs_diagram: newCpRaw.needs_diagram || false,
+      };
+
+      // Update codingTopics and topics arrays
+      setCodingTopics((prev) => {
+        const updated = prev.map((t) =>
+          t.id === topic.id
+            ? {
+                ...t,
+                coding_problems: Array.isArray(t.coding_problems)
+                  ? t.coding_problems.map((p, i) =>
+                      i === cpIdx ? sanitizedCp : p
+                    )
+                  : [sanitizedCp],
+              }
+            : t
+        );
+        localStorage.setItem("coding_topics", JSON.stringify(updated));
+        return updated;
+      });
+
+      setTopics((prev) =>
+        prev.map((t) =>
+          t.id === topic.id
+            ? {
+                ...t,
+                coding_problems: Array.isArray(t.coding_problems)
+                  ? t.coding_problems.map((p, i) =>
+                      i === cpIdx ? sanitizedCp : p
+                    )
+                  : [sanitizedCp],
+              }
+            : t
+        )
+      );
+
+      // Update selectedTopic if currently viewing it
+      if (selectedTopic && selectedTopic.id === topic.id) {
+        setSelectedTopic(
+          {
+            ...selectedTopic,
+            coding_problems: Array.isArray(selectedTopic.coding_problems)
+              ? selectedTopic.coding_problems.map((p, i) =>
+                  i === cpIdx ? sanitizedCp : p
+                )
+              : [sanitizedCp],
+          },
+          "coding"
+        );
+      }
+
+      setPerProblemLanguage((p) => ({ ...p, [key]: language }));
+    } catch (err) {
+      console.error("Error regenerating problem:", err);
+      toast({ title: "Regeneration failed", description: `${err}` });
+    } finally {
+      setPerProblemLoading((p) => ({ ...p, [key]: false }));
     }
   };
 
@@ -208,7 +330,7 @@ export default function Page() {
       const res = await fetch("/api/generate-coding-problems", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: codingTopic }),
+        body: JSON.stringify({ topic: codingTopic, language: codingLanguage }),
       });
 
       if (!res.ok) {
@@ -1046,6 +1168,7 @@ export default function Page() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic: codingTopic,
+          language: codingLanguage,
         }),
       });
 
@@ -1789,6 +1912,8 @@ export default function Page() {
                 </Button>
               </div>
             )}
+
+            {/* Global language selector removed from sidebar per user request */}
           </div>
 
           {/* Topic List */}
@@ -2258,7 +2383,7 @@ export default function Page() {
                                     (cp: any, cpIdx: number) => (
                                       <div
                                         key={cpIdx}
-                                        className="border rounded-lg overflow-hidden"
+                                        className="relative border rounded-lg overflow-hidden"
                                         style={
                                           darkMode
                                             ? { borderColor: "#2A2A2A" }
@@ -2266,7 +2391,7 @@ export default function Page() {
                                         }
                                       >
                                         <div
-                                          className="px-4 py-3 border-b"
+                                          className="px-4 py-3 border-b relative"
                                           style={
                                             darkMode
                                               ? {
@@ -2302,6 +2427,8 @@ export default function Page() {
                                               </span>
                                             </p>
                                           )}
+
+                                          {/* Removed sidebar language selector - per-user request */}
                                         </div>
                                         <div
                                           className="px-4 py-3 space-y-3"
@@ -2605,7 +2732,7 @@ export default function Page() {
                           (cp: any, idx: number) => (
                             <div
                               key={idx}
-                              className="border rounded-lg overflow-hidden transition-colors"
+                              className="relative border rounded-lg overflow-hidden transition-colors"
                               style={
                                 darkMode
                                   ? { borderColor: "#2A2A2A" }
@@ -2621,7 +2748,7 @@ export default function Page() {
                               }
                             >
                               <div
-                                className="px-6 py-4 border-b"
+                                className="px-6 py-4 border-b relative"
                                 style={
                                   darkMode
                                     ? {
@@ -2655,6 +2782,112 @@ export default function Page() {
                                     </span>
                                   </p>
                                 )}
+
+                                {/* Language label + shadcn compact dropdown (main view) - styled like demo */}
+                                <div className="absolute top-3 right-4 flex items-center gap-3">
+                                  <label
+                                    className="text-base font-semibold mr-2"
+                                    style={{ color: "#10b981" }}
+                                  >
+                                    Languages:
+                                  </label>
+                                  <div
+                                    className="relative flex flex-col items-center"
+                                    style={{ minHeight: 25 }}
+                                  >
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <button
+                                          className={`flex items-center justify-between gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border min-w-[100px] h-8 transition-all ${
+                                            darkMode
+                                              ? "bg-[#0F0F0F] text-emerald-400 border-[#2A2A2A] hover:border-[#10b981] hover:shadow-md"
+                                              : "bg-white text-emerald-600 border-gray-300 hover:border-[#10b981] hover:shadow-md"
+                                          }
+                                          `}
+                                          disabled={
+                                            !!perProblemLoading[
+                                              getCpKey(selectedTopic.id, idx)
+                                            ]
+                                          }
+                                        >
+                                          <span
+                                            id={`selected-${selectedTopic?.id}-${idx}`}
+                                            className="font-semibold text-sm"
+                                          >
+                                            {perProblemLanguage[
+                                              getCpKey(selectedTopic.id, idx)
+                                            ] || codingLanguage}
+                                          </span>
+                                          <ChevronDown className="size-4" />
+                                        </button>
+                                      </DropdownMenuTrigger>
+
+                                      <DropdownMenuContent
+                                        side="bottom"
+                                        align="end"
+                                        sideOffset={6}
+                                        className="min-w-[100px] rounded-lg"
+                                      >
+                                        {[
+                                          "C",
+                                          "C++",
+                                          "Java",
+                                          "Python",
+                                          "JavaScript",
+                                          "TypeScript",
+                                          "Go",
+                                          "Rust",
+                                        ].map((lang) => (
+                                          <DropdownMenuItem
+                                            key={lang}
+                                            onClick={async () => {
+                                              setPerProblemLanguage((p) => ({
+                                                ...p,
+                                                [getCpKey(
+                                                  selectedTopic.id,
+                                                  idx
+                                                )]: lang,
+                                              }));
+                                              await regenerateCodingProblem(
+                                                selectedTopic,
+                                                idx,
+                                                lang
+                                              );
+                                            }}
+                                            disabled={
+                                              !!perProblemLoading[
+                                                getCpKey(selectedTopic.id, idx)
+                                              ]
+                                            }
+                                            className={
+                                              darkMode
+                                                ? "px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-emerald-400 cursor-pointer transition-colors"
+                                                : "px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-600 cursor-pointer transition-colors"
+                                            }
+                                          >
+                                            {lang}
+                                          </DropdownMenuItem>
+                                        ))}
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+
+                                    {/* Loading / converting indicator with pulse */}
+                                    {perProblemLoading[
+                                      getCpKey(selectedTopic.id, idx)
+                                    ] && (
+                                      <div
+                                        className="absolute left-1/2 top-full mt-2 text-sm font-semibold animate-pulse text-center"
+                                        style={{
+                                          color: "#10b981",
+                                          whiteSpace: "nowrap",
+                                          transform: "translateX(-60%)",
+                                        }}
+                                      >
+                                        {`Converting to "${perProblemLanguage[getCpKey(selectedTopic.id, idx)] || codingLanguage}"...`}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                               <div className="px-6 py-4 space-y-4">
                                 {/* Code Block with Syntax Highlighting */}

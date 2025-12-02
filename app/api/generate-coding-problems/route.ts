@@ -44,35 +44,61 @@ const codingProblemsSchema = z.object({
     .min(1)
     .max(5)
     .describe(
-      "1-5 coding problems tailored to the topic. Each includes title, statement, C code solution, and detailed explanation."
+      "1-5 coding problems tailored to the topic. Each includes title, statement, code solution, and detailed explanation."
     ),
 });
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { topic } = body || {};
+    const { topic, language, single_problem } = body || {};
 
-    if (!topic) {
-      return new Response(
-        JSON.stringify({
-          error: "Missing required field: topic",
-        }),
-        { status: 400 }
-      );
-    }
+    // Allow caller to request a programming language; default to C for backward compatibility
+    const codeLanguage = (language || "C").toString();
 
-    const prompt = `You are an expert computer science educator. Generate practical coding problems in C language for the following topic:
+    // If client requested generation for a single problem (translation/regenerate), build a focused prompt
+    let prompt: string;
+
+    if (single_problem) {
+      const title = single_problem.problem_title || "";
+      const statement = single_problem.problem_statement || "";
+      const alg = single_problem.algorithm_type || "";
+
+      prompt = `You are an expert computer science educator. For the following single problem, provide a complete, runnable ${codeLanguage} code solution (with comments), a concise explanation focused on the important functions, and complexity analysis. Return the result matching the coding problem schema.
+
+Problem Title: ${title}
+Problem Statement: ${statement}
+Algorithm type: ${alg}
+
+Requirements:
+- Provide complete, runnable ${codeLanguage} code with comments
+- Give a concise explanation that names the important functions and explains their roles
+- Provide time and space complexity
+- Do not include unrelated extra problems; return only this problem in the format requested.`;
+    } else {
+      if (!topic) {
+        return new Response(
+          JSON.stringify({
+            error: "Missing required field: topic",
+          }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json; charset=utf-8" },
+          }
+        );
+      }
+
+      prompt = `You are an expert computer science educator. Generate practical coding problems in ${codeLanguage} language for the following topic:
 
 Topic: ${topic.title}
 Description: ${topic.description}
 Key Points: ${(topic.key_points || []).join(", ")}
 Difficulty Level: ${topic.difficulty || "Medium"}
 
-Requirements:
+  Requirements:
 - Generate ${topic.estimated_problems || 3} coding problems directly related to this topic
 - Each problem should test understanding of the key points
-- Provide complete, runnable C code solutions with proper comments
+  - Provide complete, runnable ${codeLanguage} code solutions with proper comments
 - Include complexity analysis (time and space)
 - Mark difficulty level appropriately (Easy/Medium/Hard)
 - EXPLANATION FOCUS: In the explanation, focus ONLY on the important functions and how they are used
@@ -85,6 +111,7 @@ Requirements:
 - Problems should be practical, educational, and progressively challenging
 
 Generate coding problems that help students master this specific topic.`;
+    }
 
     let result: any = null;
     let lastError: any = null;
@@ -142,14 +169,20 @@ Generate coding problems that help students master this specific topic.`;
       );
     }
 
-    return Response.json(result.object);
+    return new Response(JSON.stringify(result.object), {
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
   } catch (error) {
     console.error("Error generating coding problems:", error);
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "Generation failed",
       }),
-      { status: 500 }
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      }
     );
   }
 }
