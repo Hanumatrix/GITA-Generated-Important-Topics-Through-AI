@@ -22,14 +22,21 @@ export async function POST(req: NextRequest) {
     // clearer diagnostics on Vercel where some requests may not include
     // multipart/form-data (which `req.formData()` requires).
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
-    if (
-      !contentType.startsWith("multipart/form-data") &&
-      !contentType.startsWith("application/x-www-form-urlencoded")
-    ) {
+    // Some proxies or edge layers may strip the Content-Type header; allow
+    // an empty header and attempt to parse `formData()` as a best-effort.
+    const isExplicitMultipart =
+      contentType.startsWith("multipart/form-data") ||
+      contentType.startsWith("application/x-www-form-urlencoded");
+
+    if (!isExplicitMultipart && contentType !== "") {
       // Log headers so you can inspect them in Vercel function logs
       try {
         const headersSnapshot = Array.from(req.headers.entries());
-        console.error("Invalid Content-Type for file upload:", contentType, headersSnapshot);
+        console.error(
+          "Invalid Content-Type for file upload:",
+          contentType,
+          headersSnapshot
+        );
       } catch (e) {
         console.error("Invalid Content-Type and failed to snapshot headers", e);
       }
@@ -37,13 +44,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'Invalid Content-Type. This endpoint expects a multipart/form-data upload (FormData). Do NOT set the Content-Type header manually when using FormData from the browser.',
+            "Invalid Content-Type. This endpoint expects a multipart/form-data upload (FormData). Do NOT set the Content-Type header manually when using FormData from the browser.",
         },
         { status: 400 }
       );
     }
 
-    const formData = await req.formData();
+    // Attempt to parse the form data. If the Content-Type header was empty
+    // we still try, but handle parse failures gracefully and return a useful
+    // error that includes headers for debugging on Vercel.
+    let formData: FormData;
+    try {
+      formData = await req.formData();
+    } catch (err: any) {
+      console.error("Failed to parse formData():", err);
+      try {
+        const headersSnapshot = Array.from(req.headers.entries());
+        console.error("Headers when formData() failed:", headersSnapshot);
+      } catch (e) {
+        console.error("Failed to snapshot headers after formData() failure", e);
+      }
+
+      return NextResponse.json(
+        {
+          error:
+            "Could not parse multipart form data. Ensure the client sends a browser `FormData` body and does NOT set `Content-Type` manually. If you are using a proxy/CDN, verify it does not strip the Content-Type header.",
+        },
+        { status: 400 }
+      );
+    }
     const file = formData.get("file") as File;
 
     if (!file) {
