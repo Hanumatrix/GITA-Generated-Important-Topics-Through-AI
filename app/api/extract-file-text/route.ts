@@ -5,6 +5,107 @@ import { Buffer } from "buffer";
 // and some native-style npm packages work correctly on Vercel)
 export const runtime = "nodejs";
 
+// Magic bytes for file type detection
+const MAGIC_BYTES = {
+  PDF: { bytes: [0x25, 0x50, 0x44, 0x46], name: "PDF" }, // %PDF
+  DOCX: { bytes: [0x50, 0x4b, 0x03, 0x04], name: "DOCX" }, // PK\x03\x04 (ZIP)
+};
+
+// Helper to detect file type by magic bytes
+function detectFileTypeByMagicBytes(buffer: Buffer): string | null {
+  if (buffer.length < 4) return null;
+
+  const headerBytes = buffer.slice(0, 4);
+
+  if (
+    headerBytes[0] === MAGIC_BYTES.PDF.bytes[0] &&
+    headerBytes[1] === MAGIC_BYTES.PDF.bytes[1] &&
+    headerBytes[2] === MAGIC_BYTES.PDF.bytes[2] &&
+    headerBytes[3] === MAGIC_BYTES.PDF.bytes[3]
+  ) {
+    return "pdf";
+  }
+
+  if (
+    headerBytes[0] === MAGIC_BYTES.DOCX.bytes[0] &&
+    headerBytes[1] === MAGIC_BYTES.DOCX.bytes[1] &&
+    headerBytes[2] === MAGIC_BYTES.DOCX.bytes[2] &&
+    headerBytes[3] === MAGIC_BYTES.DOCX.bytes[3]
+  ) {
+    return "docx";
+  }
+
+  return null;
+}
+
+// Helper to extract text from PDF buffer
+async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  const PDFParser = (await import("pdf2json")).default;
+  const pdfParser = new (PDFParser as any)(null, 1);
+
+  const parsePDF = new Promise<string>((resolve, reject) => {
+    pdfParser.on("pdfParser_dataError", (errData: any) => {
+      console.error("PDF Parser Error:", errData);
+      reject(new Error(errData.parserError || "PDF parsing failed"));
+    });
+
+    pdfParser.on("pdfParser_dataReady", (pdfData: any) => {
+      try {
+        const pages = pdfData.Pages || [];
+
+        if (pages.length === 0) {
+          reject(new Error("No pages found in PDF"));
+          return;
+        }
+
+        let extractedText = "";
+
+        // Better text extraction from pdf2json
+        for (const page of pages) {
+          if (!page.Texts) continue;
+
+          for (const textItem of page.Texts) {
+            if (!textItem.R) continue;
+
+            for (const run of textItem.R) {
+              if (run.T) {
+                try {
+                  // Decode URI component and replace encoded spaces
+                  const decodedText = decodeURIComponent(run.T);
+                  extractedText += decodedText + " ";
+                } catch (e) {
+                  // If decode fails, use raw text
+                  extractedText += run.T + " ";
+                }
+              }
+            }
+          }
+          extractedText += "\n\n"; // Add page break
+        }
+
+        console.log(`Raw extracted text length: ${extractedText.length}`);
+        console.log(`First 200 chars: ${extractedText.substring(0, 200)}`);
+
+        resolve(extractedText.trim());
+      } catch (err: any) {
+        console.error("Text extraction error:", err);
+        reject(err);
+      }
+    });
+
+    pdfParser.parseBuffer(buffer);
+  });
+
+  return parsePDF;
+}
+
+// Helper to extract text from DOCX buffer
+async function extractTextFromDOCX(buffer: Buffer): Promise<string> {
+  const mammoth = await import("mammoth");
+  const result = await mammoth.extractRawText({ buffer });
+  return (result?.value || "").trim();
+}
+
 export async function POST(req: NextRequest) {
   try {
     // Helpful debug log to confirm runtime and incoming request
@@ -53,11 +154,17 @@ export async function POST(req: NextRequest) {
     // Attempt to parse the form data. If the Content-Type header was empty
     // we still try, but handle parse failures gracefully and return a useful
     // error that includes headers for debugging on Vercel.
-    let formData: FormData;
+    let formData: FormData | null = null;
+    let file: File | null = null;
+
     try {
       formData = await req.formData();
+      file = formData.get("file") as File;
     } catch (err: any) {
-      console.error("Failed to parse formData():", err);
+      console.error(
+        "Failed to parse formData(), attempting raw-body fallback:",
+        err
+      );
       try {
         const headersSnapshot = Array.from(req.headers.entries());
         console.error("Headers when formData() failed:", headersSnapshot);
@@ -65,15 +172,83 @@ export async function POST(req: NextRequest) {
         console.error("Failed to snapshot headers after formData() failure", e);
       }
 
-      return NextResponse.json(
-        {
-          error:
-            "Could not parse multipart form data. Ensure the client sends a browser `FormData` body and does NOT set `Content-Type` manually. If you are using a proxy/CDN, verify it does not strip the Content-Type header.",
-        },
-        { status: 400 }
-      );
+      // Fallback: try to read raw request body and detect file type by magic bytes
+      console.log("Attempting raw-body fallback for file extraction...");
+      try {
+        const arrayBuffer = await req.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        if (buffer.length === 0) {
+          return NextResponse.json(
+            {
+              error: "Request body is empty. Could not extract file.",
+            },
+            { status: 400 }
+          );
+        }
+
+        // Detect file type by magic bytes
+        const detectedType = detectFileTypeByMagicBytes(buffer);
+        console.log(`Detected file type from magic bytes: ${detectedType}`);
+
+        let text = "";
+
+        if (detectedType === "pdf") {
+          text = await extractTextFromPDF(buffer);
+          if (!text || text.length < 50) {
+            console.log(`PDF text too short: ${text.length} characters`);
+            return NextResponse.json(
+              {
+                error: `PDF appears to be scanned, image-based, or empty (extracted only ${text.length} characters). Please try uploading the PDF as a .txt file instead, or use a different PDF.`,
+              },
+              { status: 400 }
+            );
+          }
+        } else if (detectedType === "docx") {
+          text = await extractTextFromDOCX(buffer);
+          if (!text || text.length < 50) {
+            return NextResponse.json(
+              {
+                error:
+                  "DOCX file is empty or could not be parsed. Please check the file.",
+              },
+              { status: 400 }
+            );
+          }
+        } else {
+          // Assume plain text for unknown types
+          text = buffer.toString("utf-8").trim();
+          if (!text || text.length < 50) {
+            return NextResponse.json(
+              {
+                error: "File appears to be empty or not a valid text file.",
+              },
+              { status: 400 }
+            );
+          }
+        }
+
+        console.log(
+          `✅ Successfully extracted ${text.length} characters from raw body (fallback)`
+        );
+
+        return NextResponse.json({
+          success: true,
+          text,
+          filename: "uploaded_file",
+          size: text.length,
+        });
+      } catch (fallbackErr: any) {
+        console.error("Raw-body fallback also failed:", fallbackErr);
+        return NextResponse.json(
+          {
+            error:
+              "Could not parse multipart form data or read raw request body. Ensure the client sends a browser `FormData` body and does NOT set `Content-Type` manually.",
+          },
+          { status: 400 }
+        );
+      }
     }
-    const file = formData.get("file") as File;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -86,68 +261,9 @@ export async function POST(req: NextRequest) {
       text = await file.text();
     } else if (filename.endsWith(".pdf")) {
       try {
-        const PDFParser = (await import("pdf2json")).default;
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-
-        const pdfParser = new (PDFParser as any)(null, 1);
-
-        const parsePDF = new Promise<string>((resolve, reject) => {
-          pdfParser.on("pdfParser_dataError", (errData: any) => {
-            console.error("PDF Parser Error:", errData);
-            reject(new Error(errData.parserError || "PDF parsing failed"));
-          });
-
-          pdfParser.on("pdfParser_dataReady", (pdfData: any) => {
-            try {
-              const pages = pdfData.Pages || [];
-
-              if (pages.length === 0) {
-                reject(new Error("No pages found in PDF"));
-                return;
-              }
-
-              let extractedText = "";
-
-              // Better text extraction from pdf2json
-              for (const page of pages) {
-                if (!page.Texts) continue;
-
-                for (const textItem of page.Texts) {
-                  if (!textItem.R) continue;
-
-                  for (const run of textItem.R) {
-                    if (run.T) {
-                      try {
-                        // Decode URI component and replace encoded spaces
-                        const decodedText = decodeURIComponent(run.T);
-                        extractedText += decodedText + " ";
-                      } catch (e) {
-                        // If decode fails, use raw text
-                        extractedText += run.T + " ";
-                      }
-                    }
-                  }
-                }
-                extractedText += "\n\n"; // Add page break
-              }
-
-              console.log(`Raw extracted text length: ${extractedText.length}`);
-              console.log(
-                `First 200 chars: ${extractedText.substring(0, 200)}`
-              );
-
-              resolve(extractedText.trim());
-            } catch (err: any) {
-              console.error("Text extraction error:", err);
-              reject(err);
-            }
-          });
-
-          pdfParser.parseBuffer(buffer);
-        });
-
-        text = await parsePDF;
+        text = await extractTextFromPDF(buffer);
 
         if (!text || text.length < 50) {
           console.log(`PDF text too short: ${text.length} characters`);
@@ -169,12 +285,9 @@ export async function POST(req: NextRequest) {
       }
     } else if (filename.endsWith(".docx") || filename.endsWith(".doc")) {
       try {
-        const mammoth = await import("mammoth");
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-
-        const result = await mammoth.extractRawText({ buffer });
-        text = (result?.value || "").trim();
+        text = await extractTextFromDOCX(buffer);
 
         if (!text || text.length < 50) {
           return NextResponse.json(
