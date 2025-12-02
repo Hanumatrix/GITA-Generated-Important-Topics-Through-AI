@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Buffer } from "buffer";
+
+// Ensure this route runs in a Node.js runtime (so native Node modules like Buffer
+// and some native-style npm packages work correctly on Vercel)
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
+    // Helpful debug log to confirm runtime and incoming request
+    try {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("/api/extract-file-text runtime:", process.env.NEXT_RUNTIME || "nodejs");
+      }
+    } catch (e) {
+      /* ignore logging errors */
+    }
     const formData = await req.formData();
     const file = formData.get("file") as File;
 
@@ -143,14 +156,16 @@ export async function POST(req: NextRequest) {
       filename: file.name,
       size: text.length,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("File extraction error:", error);
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "File extraction failed",
-      },
-      { status: 500 }
-    );
+
+    const body: any = {
+      error: error instanceof Error ? error.message : "File extraction failed",
+    };
+    if (process.env.NODE_ENV !== "production" && error?.stack) {
+      body.stack = error.stack;
+    }
+
+    return NextResponse.json(body, { status: 500 });
   }
 }

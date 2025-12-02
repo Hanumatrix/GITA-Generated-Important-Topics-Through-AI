@@ -51,6 +51,18 @@ const codingProblemsSchema = z.object({
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    // Debug: log incoming payload to help diagnose 500 errors during development
+    try {
+      // Don't stringify extremely large objects in production
+      if (process.env.NODE_ENV !== "production") {
+        console.log("/api/generate-coding-problems incoming body:",
+          JSON.stringify(body, null, 2)
+        );
+      }
+    } catch (e) {
+      console.warn("Could not log request body for debugging", e);
+    }
+
     const { topic, language, single_problem } = body || {};
 
     // Allow caller to request a programming language; default to C for backward compatibility
@@ -134,6 +146,19 @@ Generate coding problems that help students master this specific topic.`;
         lastError = error;
         attempts++;
 
+        // Log details about the error and the API key used for debugging
+        try {
+          const lastKey = usedKeys[usedKeys.length - 1];
+          console.error(`AI request failed (attempt ${attempts}):`, {
+            message: error?.message || error,
+            status: error?.status || null,
+            lastKey: lastKey || null,
+            stack: process.env.NODE_ENV !== "production" ? error?.stack : undefined,
+          });
+        } catch (e) {
+          console.error("Error while logging failed AI request:", e);
+        }
+
         // Only mark key as exhausted on FINAL attempt failure
         if (attempts === maxAttempts) {
           const lastKey = usedKeys[usedKeys.length - 1];
@@ -173,16 +198,19 @@ Generate coding problems that help students master this specific topic.`;
       status: 200,
       headers: { "Content-Type": "application/json; charset=utf-8" },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating coding problems:", error);
-    return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Generation failed",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-      }
-    );
+    const body: any = {
+      error: error instanceof Error ? error.message : "Generation failed",
+    };
+    // Include stack trace in development to help debugging 500 errors
+    if (process.env.NODE_ENV !== "production" && error?.stack) {
+      body.stack = error.stack;
+    }
+
+    return new Response(JSON.stringify(body), {
+      status: 500,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
   }
 }
