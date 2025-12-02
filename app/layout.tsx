@@ -1,7 +1,8 @@
 import type React from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-// Removed Vercel Analytics import to avoid loading remote Vercel scripts in development
+// Re-enable Vercel Analytics (previously removed). Keep SSR disabled for analytics.
+import { Analytics } from "@vercel/analytics/react";
 import { ThemeProvider } from "next-themes";
 import { ConvexClientProvider } from "./convex-provider";
 import "./globals.css";
@@ -44,6 +45,8 @@ export default function RootLayout({
       <body className="m-0 p-0 font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <ConvexClientProvider>{children}</ConvexClientProvider>
+          {/* Vercel Analytics: collects pageviews and SPA navigations */}
+          <Analytics />
         </ThemeProvider>
       </body>
     </html>
