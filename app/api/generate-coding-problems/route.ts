@@ -145,8 +145,9 @@ Generate coding problems that help students master this specific topic.`;
     };
 
     while (attempts < maxAttempts) {
+      let apiKey: string | null = null;
       try {
-        const apiKey = getNextAPIKey();
+        apiKey = getNextAPIKey();
         // store only a masked representation locally for diagnostics
         usedKeys.push(maskKey(apiKey) as string);
         result = await generateObject({
@@ -190,7 +191,14 @@ Generate coding problems that help students master this specific topic.`;
           ) {
             // mark the actual key exhausted by passing the raw key from the rotator
             try {
-              markAPIKeyExhausted(apiKey);
+              if (apiKey) {
+                markAPIKeyExhausted(apiKey);
+              } else {
+                console.warn(
+                  "No raw API key available to mark exhausted; masked key:",
+                  lastKey
+                );
+              }
             } catch (e) {
               // if marking fails, log a masked hint and continue
               console.warn(
