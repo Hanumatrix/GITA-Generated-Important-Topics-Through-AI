@@ -136,6 +136,29 @@ export default function Page() {
   const getCpKey = (topicId: string, cpIdx: number) =>
     `${topicId}::cp::${cpIdx}`;
 
+  // Defer writes to localStorage to avoid blocking the main thread during
+  // synchronous event handlers or heavy state updates. Uses requestIdleCallback
+  // when available, falling back to setTimeout.
+  const deferStorageWrite = (key: string, value: string) => {
+    try {
+      if (typeof window === "undefined") return;
+      const write = () => {
+        try {
+          localStorage.setItem(key, value);
+        } catch (e) {
+          // ignore quota or storage errors in deferred write
+        }
+      };
+      if (typeof (window as any).requestIdleCallback === "function") {
+        (window as any).requestIdleCallback(write);
+      } else {
+        setTimeout(write, 0);
+      }
+    } catch (e) {
+      // best-effort, do not throw
+    }
+  };
+
   // Regenerate code & explanation for a single coding problem in a chosen language
   const regenerateCodingProblem = async (
     topic: Topic,
@@ -198,7 +221,7 @@ export default function Page() {
               }
             : t
         );
-        localStorage.setItem("coding_topics", JSON.stringify(updated));
+        deferStorageWrite("coding_topics", JSON.stringify(updated));
         return updated;
       });
 
@@ -363,7 +386,7 @@ export default function Page() {
         { ...codingTopic, coding_problems: sanitizedCoding },
         "coding"
       );
-      localStorage.setItem("coding_topics", JSON.stringify(updated));
+      deferStorageWrite("coding_topics", JSON.stringify(updated));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {

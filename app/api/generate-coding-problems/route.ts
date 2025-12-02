@@ -55,7 +55,8 @@ export async function POST(req: Request) {
     try {
       // Don't stringify extremely large objects in production
       if (process.env.NODE_ENV !== "production") {
-        console.log("/api/generate-coding-problems incoming body:",
+        console.log(
+          "/api/generate-coding-problems incoming body:",
           JSON.stringify(body, null, 2)
         );
       }
@@ -131,10 +132,23 @@ Generate coding problems that help students master this specific topic.`;
     const maxAttempts = 3;
     const usedKeys: string[] = [];
 
+    // small helper to avoid logging sensitive API key values
+    const maskKey = (k?: string | null) => {
+      if (!k) return null;
+      try {
+        const s = String(k);
+        if (s.length <= 8) return s[0] + "***" + s[s.length - 1];
+        return `${s.slice(0, 4)}***${s.slice(-4)}`;
+      } catch (e) {
+        return null;
+      }
+    };
+
     while (attempts < maxAttempts) {
       try {
         const apiKey = getNextAPIKey();
-        usedKeys.push(apiKey);
+        // store only a masked representation locally for diagnostics
+        usedKeys.push(maskKey(apiKey) as string);
         result = await generateObject({
           model: google("gemini-2.0-flash"),
           schema: codingProblemsSchema,
@@ -148,12 +162,18 @@ Generate coding problems that help students master this specific topic.`;
 
         // Log details about the error and the API key used for debugging
         try {
-          const lastKey = usedKeys[usedKeys.length - 1];
+          const lastKeyMasked = usedKeys[usedKeys.length - 1] || null;
           console.error(`AI request failed (attempt ${attempts}):`, {
             message: error?.message || error,
             status: error?.status || null,
-            lastKey: lastKey || null,
-            stack: process.env.NODE_ENV !== "production" ? error?.stack : undefined,
+            // do not log real API keys in any environment
+            lastKeyMasked,
+            // include stack when running in dev OR when explicitly enabled via env
+            stack:
+              process.env.NODE_ENV !== "production" ||
+              process.env.NEXT_PUBLIC_SHOW_ERROR_STACK === "1"
+                ? error?.stack
+                : undefined,
           });
         } catch (e) {
           console.error("Error while logging failed AI request:", e);
@@ -168,7 +188,16 @@ Generate coding problems that help students master this specific topic.`;
             error?.message?.includes("quota") ||
             error?.message?.includes("rate")
           ) {
-            markAPIKeyExhausted(lastKey);
+            // mark the actual key exhausted by passing the raw key from the rotator
+            try {
+              markAPIKeyExhausted(apiKey);
+            } catch (e) {
+              // if marking fails, log a masked hint and continue
+              console.warn(
+                "Failed to mark API key exhausted; masked key:",
+                lastKey
+              );
+            }
             console.warn(
               `[Rate Limit] API key exhausted after ${maxAttempts} attempts`
             );
@@ -203,8 +232,12 @@ Generate coding problems that help students master this specific topic.`;
     const body: any = {
       error: error instanceof Error ? error.message : "Generation failed",
     };
-    // Include stack trace in development to help debugging 500 errors
-    if (process.env.NODE_ENV !== "production" && error?.stack) {
+    // Include stack trace in development or when explicitly enabled to help debugging 500 errors
+    if (
+      (process.env.NODE_ENV !== "production" ||
+        process.env.NEXT_PUBLIC_SHOW_ERROR_STACK === "1") &&
+      error?.stack
+    ) {
       body.stack = error.stack;
     }
 
