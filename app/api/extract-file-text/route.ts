@@ -10,11 +10,39 @@ export async function POST(req: NextRequest) {
     // Helpful debug log to confirm runtime and incoming request
     try {
       if (process.env.NODE_ENV !== "production") {
-        console.log("/api/extract-file-text runtime:", process.env.NEXT_RUNTIME || "nodejs");
+        console.log(
+          "/api/extract-file-text runtime:",
+          process.env.NEXT_RUNTIME || "nodejs"
+        );
       }
     } catch (e) {
       /* ignore logging errors */
     }
+    // Validate Content-Type before attempting to parse form data to provide
+    // clearer diagnostics on Vercel where some requests may not include
+    // multipart/form-data (which `req.formData()` requires).
+    const contentType = (req.headers.get("content-type") || "").toLowerCase();
+    if (
+      !contentType.startsWith("multipart/form-data") &&
+      !contentType.startsWith("application/x-www-form-urlencoded")
+    ) {
+      // Log headers so you can inspect them in Vercel function logs
+      try {
+        const headersSnapshot = Array.from(req.headers.entries());
+        console.error("Invalid Content-Type for file upload:", contentType, headersSnapshot);
+      } catch (e) {
+        console.error("Invalid Content-Type and failed to snapshot headers", e);
+      }
+
+      return NextResponse.json(
+        {
+          error:
+            'Invalid Content-Type. This endpoint expects a multipart/form-data upload (FormData). Do NOT set the Content-Type header manually when using FormData from the browser.',
+        },
+        { status: 400 }
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get("file") as File;
 
