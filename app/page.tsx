@@ -4,7 +4,7 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Github, Twitter } from "lucide-react";
 import type { Topic, Relationship } from "@/types";
 import { extractTextFromFile } from "@/lib/extract-text-from-file";
 import { useMutation } from "convex/react";
@@ -1552,6 +1552,48 @@ export default function Page() {
             </span>
             . All rights reserved.
           </p>
+          <div className="flex gap-3 justify-center items-center mt-3">
+            <span
+              className="text-sm"
+              style={darkMode ? { color: "#A8A8A8" } : { color: "#64748b" }}
+            >
+              Connect with me:
+            </span>
+            <a
+              href="https://github.com/Hanumatrix"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Visit Hanumatrix GitHub profile"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:opacity-75 transition-opacity"
+              style={
+                darkMode
+                  ? { backgroundColor: "#374151", color: "#d1d5db" }
+                  : { backgroundColor: "#e5e7eb", color: "#4b5563" }
+              }
+            >
+              <Github size={18} />
+            </a>
+            <a
+              href="https://x.com/hanumatrix"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Visit Hanumatrix X (Twitter) profile"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:opacity-75 transition-opacity"
+              style={
+                darkMode
+                  ? { backgroundColor: "#374151", color: "#d1d5db" }
+                  : { backgroundColor: "#e5e7eb", color: "#4b5563" }
+              }
+            >
+              <Twitter size={18} />
+            </a>
+            <span
+              className="text-sm"
+              style={darkMode ? { color: "#A8A8A8" } : { color: "#64748b" }}
+            >
+              · @hanumatrix
+            </span>
+          </div>
         </footer>
       </div>
     );
