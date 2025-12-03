@@ -2364,6 +2364,9 @@ export default function Page() {
                                                     );
                                                   }}
                                                   className="h-40 w-40 object-contain rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
+                                                  onError={(e) => {
+                                                    e.currentTarget.style.display = "none";
+                                                  }}
                                                 />
                                               </div>
                                             );
@@ -2726,9 +2729,42 @@ export default function Page() {
                               alt={selectedTopic.title}
                               className="w-full h-auto object-cover"
                               onError={(e) => {
-                                e.currentTarget.style.display = "none";
+                                e.currentTarget.parentElement!.innerHTML = `
+                                  <div style="${
+                                    darkMode
+                                      ? "background-color: #1e293b; color: #94a3b8"
+                                      : "background-color: #f8fafc; color: #64748b"
+                                  }; padding: 2rem; border-radius: 0.5rem; text-align: center;">
+                                    <p style="margin: 0; font-size: 1.25rem;">📊 Diagram unavailable</p>
+                                    <p style="margin-top: 0.5rem; font-size: 0.875rem;">Search: "${selectedTopic.title} diagram"</p>
+                                  </div>
+                                `;
                               }}
                             />
+                          </div>
+                        ) : selectedTopic.has_diagrams ? (
+                          <div
+                            style={
+                              darkMode
+                                ? {
+                                    backgroundColor: "#1e293b",
+                                    color: "#94a3b8",
+                                    borderColor: "#2A2A2A",
+                                  }
+                                : {
+                                    backgroundColor: "#f8fafc",
+                                    color: "#64748b",
+                                    borderColor: "#e2e8f0",
+                                  }
+                            }
+                            className="p-8 rounded-lg border text-center"
+                          >
+                            <p style={{ fontSize: "1.25rem", margin: "0" }}>
+                              📊 Diagram recommended for this topic
+                            </p>
+                            <p style={{ fontSize: "0.875rem", marginTop: "0.5rem" }}>
+                              Search: "{selectedTopic.title} diagram"
+                            </p>
                           </div>
                         ) : null}
                       </div>
@@ -3117,6 +3153,9 @@ export default function Page() {
                                             );
                                           }}
                                           className="h-48 w-48 object-contain rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = "none";
+                                          }}
                                         />
                                       </div>
                                     );
