@@ -3,6 +3,7 @@ import { google } from "@ai-sdk/google";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import crypto from "crypto";
 import { getNextAPIKey, markAPIKeyExhausted } from "@/lib/api-key-rotator";
 
@@ -51,7 +52,8 @@ export async function POST(req: Request) {
     };
 
     const cacheKey = buildCacheKey(content, topic.title || "");
-    const cacheDir = path.join(process.cwd(), ".cache", "qas");
+    // Use OS temp directory in serverless environments (e.g., Vercel)
+    const cacheDir = path.join(os.tmpdir(), "gita-qas-cache");
     const cachePath = path.join(cacheDir, `${cacheKey}.json`);
 
     // Server-side TTL (seconds). Default to 7 days.
