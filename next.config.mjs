@@ -22,8 +22,10 @@ const nextConfig = {
           },
           {
             key: "Content-Security-Policy",
+            // Allow loading images from HTTPS external sources in addition to
+            // same-origin and data URLs so third-party diagram thumbnails can render.
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https: wss: https://sensible-terrier-111.convex.cloud wss://sensible-terrier-111.convex.cloud; img-src 'self' data:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data:",
+              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https: wss: https://sensible-terrier-111.convex.cloud wss://sensible-terrier-111.convex.cloud; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data:",
           },
         ],
       },

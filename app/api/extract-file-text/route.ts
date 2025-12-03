@@ -182,13 +182,11 @@ export async function POST(req: Request) {
             console.log("Found base64-encoded fileData");
             fileBuffer = Buffer.from(json.fileData, "base64");
             filename = json.filename || filename;
-          }
-          else if (json.file && typeof json.file === "string") {
+          } else if (json.file && typeof json.file === "string") {
             console.log("Found base64-encoded file field");
             fileBuffer = Buffer.from(json.file, "base64");
             filename = json.filename || filename;
-          }
-          else if (Array.isArray(json)) {
+          } else if (Array.isArray(json)) {
             for (const [key, val] of json) {
               if (key === "file" && typeof val === "string") {
                 console.log("Found file in FormData array as base64");

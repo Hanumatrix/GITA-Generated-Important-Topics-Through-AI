@@ -11,10 +11,13 @@ export async function GET(req: Request) {
 
     // Basic validation: only allow HTTPS remote URLs to avoid exposing local network
     if (!/^https:\/\//i.test(url)) {
-      return new Response(JSON.stringify({ error: "Only https:// URLs are allowed" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Only https:// URLs are allowed" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     // Fetch the remote image
@@ -31,14 +34,18 @@ export async function GET(req: Request) {
       return new Response(null, { status: 502 });
     }
 
-    const contentType = remoteRes.headers.get("content-type") || "application/octet-stream";
+    const contentType =
+      remoteRes.headers.get("content-type") || "application/octet-stream";
 
     // Only allow image content types
     if (!contentType.startsWith("image/")) {
-      return new Response(JSON.stringify({ error: "Remote resource is not an image" }), {
-        status: 415,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Remote resource is not an image" }),
+        {
+          status: 415,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     // Stream the image back to the client with same-origin URL
@@ -54,9 +61,12 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error("proxy-image error:", err);
-    return new Response(JSON.stringify({ error: "Failed to fetch remote image" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: "Failed to fetch remote image" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }
