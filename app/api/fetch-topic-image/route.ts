@@ -12,12 +12,15 @@ export async function POST(req: Request) {
 
     const wikiUrl = await fetchFromWikipedia(topic);
     if (wikiUrl) {
-      return Response.json({ success: true, imageUrl: wikiUrl });
+      // Return same-origin proxied URL so production CSP allows the image
+      const proxied = `/api/proxy-image?url=${encodeURIComponent(wikiUrl)}`;
+      return Response.json({ success: true, imageUrl: proxied });
     }
 
     const diagramUrl = await fetchDiagramFromGoogle(topic);
     if (diagramUrl) {
-      return Response.json({ success: true, imageUrl: diagramUrl });
+      const proxied = `/api/proxy-image?url=${encodeURIComponent(diagramUrl)}`;
+      return Response.json({ success: true, imageUrl: proxied });
     }
 
     return Response.json({
@@ -101,7 +104,8 @@ async function fetchFromWikipedia(topic: string): Promise<string | null> {
 async function fetchDiagramFromGoogle(topic: string): Promise<string | null> {
   try {
     const searchQuery = `${topic} diagram educational`;
-    const encodedQuery = encodeURIComponent(searchQuery);
+    // encode inline to avoid potential minification/scope issues
+    const encoded = encodeURIComponent(searchQuery);
 
     const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
     const searchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
@@ -110,7 +114,7 @@ async function fetchDiagramFromGoogle(topic: string): Promise<string | null> {
       return null;
     }
 
-    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodedQuery}&searchType=image&num=3&imgSize=large&safe=active`;
+    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encoded}&searchType=image&num=3&imgSize=large&safe=active`;
 
     const response = await fetch(url);
 
