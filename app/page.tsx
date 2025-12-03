@@ -322,9 +322,12 @@ export default function Page() {
       if (res.ok) {
         const data = await res.json();
         if (data.imageUrl) {
-          // Use same-origin proxy to avoid CSP blocking on production
-          const proxied = `/api/proxy-image?url=${encodeURIComponent(data.imageUrl)}`;
-          setTopicImages((prev) => ({ ...prev, [topic.id]: proxied }));
+          // If the API already returned a same-origin URL (starts with '/'), use it directly.
+          // Otherwise wrap the remote URL with the same-origin proxy to avoid CSP blocking.
+          const finalUrl = String(data.imageUrl).startsWith("/")
+            ? String(data.imageUrl)
+            : `/api/proxy-image?url=${encodeURIComponent(String(data.imageUrl))}`;
+          setTopicImages((prev) => ({ ...prev, [topic.id]: finalUrl }));
         }
       }
     } catch (err) {
@@ -806,10 +809,12 @@ export default function Page() {
       if (response.ok) {
         const data = await response.json();
         if (data.imageUrl) {
-          const proxied = `/api/proxy-image?url=${encodeURIComponent(data.imageUrl)}`;
+          const finalUrl = String(data.imageUrl).startsWith("/")
+            ? String(data.imageUrl)
+            : `/api/proxy-image?url=${encodeURIComponent(String(data.imageUrl))}`;
           setTopicQuestionImages((prev) => ({
             ...prev,
-            [key]: proxied,
+            [key]: finalUrl,
           }));
         }
       }
