@@ -322,7 +322,9 @@ export default function Page() {
       if (res.ok) {
         const data = await res.json();
         if (data.imageUrl) {
-          setTopicImages((prev) => ({ ...prev, [topic.id]: data.imageUrl }));
+          // Use same-origin proxy to avoid CSP blocking on production
+          const proxied = `/api/proxy-image?url=${encodeURIComponent(data.imageUrl)}`;
+          setTopicImages((prev) => ({ ...prev, [topic.id]: proxied }));
         }
       }
     } catch (err) {
@@ -804,9 +806,10 @@ export default function Page() {
       if (response.ok) {
         const data = await response.json();
         if (data.imageUrl) {
+          const proxied = `/api/proxy-image?url=${encodeURIComponent(data.imageUrl)}`;
           setTopicQuestionImages((prev) => ({
             ...prev,
-            [key]: data.imageUrl,
+            [key]: proxied,
           }));
         }
       }
@@ -2365,7 +2368,8 @@ export default function Page() {
                                                   }}
                                                   className="h-40 w-40 object-contain rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
                                                   onError={(e) => {
-                                                    e.currentTarget.style.display = "none";
+                                                    e.currentTarget.style.display =
+                                                      "none";
                                                   }}
                                                 />
                                               </div>
@@ -2762,7 +2766,12 @@ export default function Page() {
                             <p style={{ fontSize: "1.25rem", margin: "0" }}>
                               📊 Diagram recommended for this topic
                             </p>
-                            <p style={{ fontSize: "0.875rem", marginTop: "0.5rem" }}>
+                            <p
+                              style={{
+                                fontSize: "0.875rem",
+                                marginTop: "0.5rem",
+                              }}
+                            >
                               Search: "{selectedTopic.title} diagram"
                             </p>
                           </div>
@@ -3154,7 +3163,8 @@ export default function Page() {
                                           }}
                                           className="h-48 w-48 object-contain rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
                                           onError={(e) => {
-                                            e.currentTarget.style.display = "none";
+                                            e.currentTarget.style.display =
+                                              "none";
                                           }}
                                         />
                                       </div>
