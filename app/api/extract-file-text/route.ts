@@ -1,17 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { Buffer } from "buffer";
 
-// Ensure this route runs in a Node.js runtime (so native Node modules like Buffer
-// and some native-style npm packages work correctly on Vercel)
 export const runtime = "nodejs";
 
-// Magic bytes for file type detection
 const MAGIC_BYTES = {
   PDF: { bytes: [0x25, 0x50, 0x44, 0x46], name: "PDF" }, // %PDF
   DOCX: { bytes: [0x50, 0x4b, 0x03, 0x04], name: "DOCX" }, // PK\x03\x04 (ZIP)
 };
 
-// Helper to detect file type by magic bytes
+// Detect file type (PDF/DOCX) by reading first 4 bytes
 function detectFileTypeByMagicBytes(buffer: Buffer): string | null {
   if (buffer.length < 4) return null;
 
@@ -38,7 +35,7 @@ function detectFileTypeByMagicBytes(buffer: Buffer): string | null {
   return null;
 }
 
-// Helper to extract text from PDF buffer
+// Extract text from PDF using pdf2json library
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   const PDFParser = (await import("pdf2json")).default;
   const pdfParser = new (PDFParser as any)(null, 1);
@@ -99,14 +96,15 @@ async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   return parsePDF;
 }
 
-// Helper to extract text from DOCX buffer
+// Extract text from DOCX using mammoth library
 async function extractTextFromDOCX(buffer: Buffer): Promise<string> {
   const mammoth = await import("mammoth");
   const result = await mammoth.extractRawText({ buffer });
   return (result?.value || "").trim();
 }
 
-export async function POST(req: NextRequest) {
+// File extraction endpoint: accepts .txt, .pdf, or .docx uploads and returns extracted text
+export async function POST(req: Request) {
   try {
     // Helpful debug log to confirm runtime and incoming request
     try {
@@ -119,19 +117,15 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       /* ignore logging errors */
     }
-    // Validate Content-Type before attempting to parse form data to provide
-    // clearer diagnostics on Vercel where some requests may not include
-    // multipart/form-data (which `req.formData()` requires).
+    // Check Content-Type to decide parsing strategy
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
-    // Some proxies or edge layers may strip the Content-Type header; allow
-    // an empty header and attempt to parse `formData()` as a best-effort.
     const isExplicitMultipart =
       contentType.startsWith("multipart/form-data") ||
       contentType.startsWith("application/x-www-form-urlencoded");
     const isJSON = contentType.startsWith("application/json");
 
-    // Read the body ONCE to avoid "body already read" errors
-    let bodyBuffer: Buffer | null = null;
+    // Read request body once (streaming bodies can only be read once)
+    let bodyBuffer: Buffer;
     try {
       const arrayBuffer = await req.arrayBuffer();
       bodyBuffer = Buffer.from(arrayBuffer);
@@ -145,9 +139,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Attempt to parse the form data. If the Content-Type header was empty
-    // we still try, but handle parse failures gracefully and return a useful
-    // error that includes headers for debugging on Vercel.
+    // Try FormData first
     let formData: FormData | null = null;
     let file: File | null = null;
 
@@ -157,7 +149,7 @@ export async function POST(req: NextRequest) {
         const reconstructedReq = new Request(req.url, {
           method: req.method,
           headers: req.headers,
-          body: bodyBuffer,
+          body: new Uint8Array(bodyBuffer),
         });
         formData = await reconstructedReq.formData();
         file = formData.get("file") as File;
@@ -171,7 +163,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If formData parsing failed or Content-Type is JSON, try JSON fallback
+    // Fallback: try JSON parsing if FormData failed
     if (!file && isJSON && bodyBuffer.length > 0) {
       console.log(
         "Attempting JSON fallback (Content-Type is application/json)..."
@@ -181,27 +173,22 @@ export async function POST(req: NextRequest) {
         const json = JSON.parse(jsonText);
         console.log("JSON parsed, looking for file data...");
 
-        // The FormData might have been serialized as JSON
-        // Try to extract file data (could be base64, blob, or FormData-like structure)
+        // Extract file data from JSON (could be base64 or nested structure)
         let fileBuffer: Buffer | null = null;
         let filename = "uploaded_file";
 
         if (json && typeof json === "object") {
-          // Check if it has a base64-encoded field
           if (json.fileData && typeof json.fileData === "string") {
             console.log("Found base64-encoded fileData");
             fileBuffer = Buffer.from(json.fileData, "base64");
             filename = json.filename || filename;
           }
-          // Check if it's a FormData-like structure with a "file" field as base64
           else if (json.file && typeof json.file === "string") {
             console.log("Found base64-encoded file field");
             fileBuffer = Buffer.from(json.file, "base64");
             filename = json.filename || filename;
           }
-          // Check if it's the raw FormData entries
           else if (Array.isArray(json)) {
-            // FormData as array of [name, value] pairs
             for (const [key, val] of json) {
               if (key === "file" && typeof val === "string") {
                 console.log("Found file in FormData array as base64");
@@ -255,11 +242,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If formData and JSON both failed, try raw binary detection by magic bytes
+    // Last fallback: detect by magic bytes and extract
     if (!file && bodyBuffer.length > 0) {
       console.log("Attempting raw-body fallback with magic byte detection...");
       try {
-        // Detect file type by magic bytes
         const detectedType = detectFileTypeByMagicBytes(bodyBuffer);
         console.log(`Detected file type from magic bytes: ${detectedType}`);
 
@@ -288,7 +274,6 @@ export async function POST(req: NextRequest) {
             );
           }
         } else {
-          // Assume plain text for unknown types
           text = bodyBuffer.toString("utf-8").trim();
           if (!text || text.length < 50) {
             return NextResponse.json(
@@ -329,6 +314,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
+    // Process file based on extension
     const filename = file.name.toLowerCase();
     let text = "";
 

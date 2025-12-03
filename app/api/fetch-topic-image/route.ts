@@ -10,19 +10,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // Try to fetch educational diagram from Google Images
+    // Try Google Images first
     const diagramUrl = await fetchDiagramFromGoogle(topic);
     if (diagramUrl) {
       return Response.json({ success: true, imageUrl: diagramUrl });
     }
 
-    // Fallback to Wikipedia/educational sources
+    // Try Wikipedia as fallback
     const wikiUrl = await fetchFromWikipedia(topic);
     if (wikiUrl) {
       return Response.json({ success: true, imageUrl: wikiUrl });
     }
 
-    // Last resort: Generate a placeholder that indicates diagram needed
+    // Return placeholder if no image found
     return Response.json({
       success: true,
       imageUrl: `https://via.placeholder.com/800x600/1e293b/60a5fa?text=${encodeURIComponent(
@@ -41,12 +41,10 @@ export async function POST(req: Request) {
   }
 }
 
-// Fetch educational diagrams from Google Custom Search
+// Fetch educational diagrams from Google Custom Search API
 async function fetchDiagramFromGoogle(topic: string): Promise<string | null> {
   try {
-    // Add diagram/illustration keywords to search
     const searchQuery = `${topic} diagram illustration infographic chart`;
-    const encodedQuery = encodeURIComponent(searchQuery);
 
     // Google Custom Search API
     const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
@@ -80,7 +78,7 @@ async function fetchDiagramFromGoogle(topic: string): Promise<string | null> {
   }
 }
 
-// Fetch diagrams from Wikipedia
+// Fetch diagrams from Wikipedia by title
 async function fetchFromWikipedia(topic: string): Promise<string | null> {
   try {
     const encodedTopic = encodeURIComponent(topic);
