@@ -1,4 +1,12 @@
 # 🎓 GITA — AI-Generated Important Topics from Syllabus
+<p align="center">
+  <img src="public/Anime.jpeg" alt="GITA Preview" width="80%" />
+</p>
+
+<p align="center">
+  <strong>Built by a student, for students</strong>
+</p>
+
 
 > **Turn any syllabus into exam-ready study material using AI.**  
 > Upload your syllabus → get **important topics, questions, answers, coding problems & visual learning graphs** in minutes.
@@ -17,8 +25,6 @@ Most tools generate random content.
 - 💻 Creates **coding problems with solutions**
 - 🧠 Shows **topic relationships & learning paths**
 - 🎨 Adds **diagrams & visual explanations**
-
-Built **Built by a student, for students**.
 
 ---
 
