@@ -1,6 +1,6 @@
 # 🎓 GITA — AI-Generated Important Topics from Syllabus
 <p align="center">
-  <img src="public/Anime.jpeg" alt="GITA Preview" width="80%" />
+    <img src="public/tenor.gif" alt="GITA Demo" width="85%" />
 </p>
 
 <p align="center">
