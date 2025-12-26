@@ -78,7 +78,7 @@ Built **Built by a student, for students**.
 
 ### 1️⃣ Clone & install
 ```bash
-git clone <https://github.com/Hanumatrix/GITA-Generated-Important-Topics-Through-AI>
+git clone https://github.com/Hanumatrix/GITA-Generated-Important-Topics-Through-AI
 cd GITA-Generated-Important-Topics-Through-AI
 
 ```
